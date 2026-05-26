@@ -1,0 +1,6 @@
+{
+  "name": "Midlu's Routine",
+  "description": "An interactive, intelligent daily routine and habit management application with cosmic visual analytics, smart reminders, and device syncing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
