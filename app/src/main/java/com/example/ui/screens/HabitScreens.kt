@@ -104,7 +104,7 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
                 val tabs = listOf(
                     Triple("today", "Orbits", Icons.Default.Today),
                     Triple("stats", "Telemetry", Icons.Default.Analytics),
-                    Triple("coach", "Aether AI", Icons.Default.Forum),
+                    Triple("coach", "Midlu AI", Icons.Default.Forum),
                     Triple("profile", "Profile", Icons.Default.Person)
                 )
 
@@ -502,12 +502,12 @@ fun AetherSmartSuggestions(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Cyclone, 
-                        contentDescription = "Aether Spark", 
+                        contentDescription = "Midlu Spark", 
                         tint = BentoPrimaryPurple,
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "AETHER GUIDANCE",
+                        text = "MIDLU AI GUIDANCE",
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         letterSpacing = 1.sp,
@@ -980,7 +980,7 @@ fun AetherGuideView(
             .padding(horizontal = 20.dp)
     ) {
         Text(
-            text = "Aether AI Guidance",
+            text = "Midlu AI Guidance",
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
             color = PureWhite,
@@ -1067,7 +1067,7 @@ fun AetherGuideView(
                     OutlinedTextField(
                         value = rawInput,
                         onValueChange = { rawInput = it },
-                        placeholder = { Text("Consult with Aether guide...", color = MutedSlate, fontSize = 13.sp) },
+                        placeholder = { Text("Consult with Midlu AI...", color = MutedSlate, fontSize = 13.sp) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("coach_chat_input"),
@@ -1143,7 +1143,7 @@ fun ChatBubbleRow(message: ChatMessage) {
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = if (isAI) "Aether Coach" else "You",
+                        text = if (isAI) "Midlu AI" else "You",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
                         color = if (isAI) BentoTextPrimaryPurple else Color.White.copy(alpha = 0.8f),
@@ -1189,7 +1189,7 @@ fun ProfileSectionView(
     var isDarkTheme by remember { mutableStateOf(isAppDarkThemeGlobal) }
 
     // Coach Personality state backed by SharedPreferences
-    var coachPersonality by remember { mutableStateOf(prefs.getString("coach_personality", "Aether Guide") ?: "Aether Guide") }
+    var coachPersonality by remember { mutableStateOf(prefs.getString("coach_personality", "Midlu Guide") ?: "Midlu Guide") }
     
     // Dialog state for editing profile
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -1461,7 +1461,7 @@ fun ProfileSectionView(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = "Aether AI Guidance Voice",
+                                    text = "Midlu AI Guidance Voice",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     color = BentoTextPrimary
@@ -1479,7 +1479,7 @@ fun ProfileSectionView(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val personalites = listOf("Aether Guide", "Encouraging", "Stoic Guide", "Composed")
+                            val personalites = listOf("Midlu Guide", "Encouraging", "Stoic Guide", "Composed")
                             personalites.forEach { style ->
                                 val isSelected = coachPersonality == style
                                 Box(

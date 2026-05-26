@@ -70,7 +70,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
         listOf(
             ChatMessage(
                 sender = "AI",
-                text = "✨ Salutations, developer of rituals! I am **Aether**, your intelligent habit mentor. I analyze your consistency patterns and suggest structural optimizations to level up your focus.",
+                text = "✨ Salutations, developer of rituals! I am **Midlu AI**, your intelligent habit mentor. I analyze your consistency patterns and suggest structural optimizations to level up your focus.",
                 timestamp = System.currentTimeMillis()
             )
         )

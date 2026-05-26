@@ -120,7 +120,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
             }
 
             Text(
-                text = "NEBULA'S ROUTINE",
+                text = "MIDLU'S ROUTINE",
                 fontWeight = FontWeight.Black,
                 fontSize = 26.sp,
                 color = PureWhite,

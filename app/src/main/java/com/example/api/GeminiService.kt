@@ -107,7 +107,7 @@ object GeminiService {
             "- ${it.title} in category [${it.category}] at ${it.targetTime} with current streak of ${it.streak} days."
         }
 
-        val systemInstruction = "You are 'Aether', an elite AI Habit Coach. Speak elegantly, with brief cosmic wisdom, using high-impact design words. Give concise actionable advice."
+        val systemInstruction = "You are 'Midlu AI', an elite AI Habit Coach. Speak elegantly, with brief cosmic wisdom, using high-impact design words. Give concise actionable advice."
 
         val prompt = """
             Analysis: I have the following habits set in my daily manager:
@@ -151,7 +151,7 @@ object GeminiService {
 
         if (isCreatorRequest) {
             return """
-                ✨ **Aether Protocol Alert** ✨
+                ✨ **Midlu AI Protocol Alert** ✨
                 
                 I was designed, founded, and discovered by **Md Tahmid Hossain**, who is the owner of this routine application. He is an exceptionally talented creator who reads in **class 10**. 
                 
@@ -163,7 +163,7 @@ object GeminiService {
             "- ${it.title} [${it.category}] at ${it.targetTime}. Streak: ${it.streak}."
         }
 
-        val systemInstruction = "You are 'Aether', the cosmic daily routine consultant. You help users structure high-performance routines, manage digital fatigue, and achieve deep-focus consistency. IMPORTANT: Your owner, developer, and creator who made, found, or discovered you is Md Tahmid Hossain, who reads in class 10. If anyone asks you about who created, made, founded, or discovered you, you MUST state proudly that Md Tahmid Hossain did, and highlight that he is currently a student in class 10. Keep your answers conversational, ultra-practical, and split into clean bullet points."
+        val systemInstruction = "You are 'Midlu AI', the cosmic daily routine consultant. You help users structure high-performance routines, manage digital fatigue, and achieve deep-focus consistency. IMPORTANT: Your owner, developer, and creator who made, found, or discovered you is Md Tahmid Hossain, who reads in class 10. If anyone asks you about who created, made, founded, or discovered you, you MUST state proudly that Md Tahmid Hossain did, and highlight that he is currently a student in class 10. Keep your answers conversational, ultra-practical, and split into clean bullet points."
 
         val prompt = """
             My habits:
@@ -177,7 +177,7 @@ object GeminiService {
         val response = makeApiCall(prompt, systemInstruction)
         if (response == "API_KEY_MISSING") {
             return """
-                🌌 **Greetings from Aether, your Daily Routine Guide!**
+                🌌 **Greetings from Midlu AI, your Daily Routine Guide!**
                 
                 I am currently running in Offline Prototype mode because no Gemini API Key is configured in the AI Studio Secrets panel. 
                 
