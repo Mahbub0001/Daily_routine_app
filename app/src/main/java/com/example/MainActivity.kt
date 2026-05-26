@@ -25,6 +25,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.screens.MainHabitScreen
+import com.example.ui.screens.AuthScreen
+import com.example.api.FirebaseSyncHelper
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SupernovaPink
 import com.example.ui.viewmodel.RoutineViewModel
@@ -35,6 +37,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Initialize FirebaseSyncHelper securely
+        try {
+            FirebaseSyncHelper.initialize(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Firebase initialization error: ${e.message}")
+        }
+        
+        // Load persistent theme preference
+        try {
+            val prefs = getSharedPreferences("midlu_routine_prefs", Context.MODE_PRIVATE)
+            com.example.ui.theme.isAppDarkThemeGlobal = prefs.getBoolean("app_theme_dark", false)
+        } catch (e: Exception) {
+            // Fallback gracefully
+        }
         
         // Capture all uncaught exceptions to show Recovery Console upon next boot
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -60,6 +77,8 @@ class MainActivity : ComponentActivity() {
                             .getString("last_crash_trace", null)
                     )
                 }
+
+                val isUserAuthenticated by FirebaseSyncHelper.isUserAuthenticated.collectAsState()
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -90,6 +109,12 @@ class MainActivity : ComponentActivity() {
                                     .remove("last_crash_trace")
                                     .commit()
                                 activeCrashLog = null
+                            }
+                        )
+                    } else if (!isUserAuthenticated) {
+                        AuthScreen(
+                            onAuthSuccess = {
+                                viewModel.refreshSmartReminders()
                             }
                         )
                     } else {

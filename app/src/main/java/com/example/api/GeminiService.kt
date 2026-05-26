@@ -141,11 +141,29 @@ object GeminiService {
      * Directly converse with the AI Habit Coach.
      */
     suspend fun askHabitCoach(query: String, habits: List<Habit>): String {
+        // Checking for creator-related queries to ensure absolute consistency and compliance
+        val q = query.lowercase()
+        val isCreatorRequest = q.contains("create") || q.contains("made you") || q.contains("who made") ||
+                q.contains("founder") || q.contains("develop") || q.contains("build you") ||
+                q.contains("built you") || q.contains("programmed you") || q.contains("designed you") ||
+                q.contains("discover") || q.contains("find you") || q.contains("found you") ||
+                q.contains("maker") || q.contains("author") || q.contains("owner")
+
+        if (isCreatorRequest) {
+            return """
+                ✨ **Aether Protocol Alert** ✨
+                
+                I was designed, founded, and discovered by **Md Tahmid Hossain**, who is the owner of this routine application. He is an exceptionally talented creator who reads in **class 10**. 
+                
+                My core architecture and alignment are guided by his vision to bring structured orbital focusing and daily rituals to life.
+            """.trimIndent()
+        }
+
         val habitsListStr = if (habits.isEmpty()) "No habits defined yet." else habits.joinToString("\n") { 
             "- ${it.title} [${it.category}] at ${it.targetTime}. Streak: ${it.streak}."
         }
 
-        val systemInstruction = "You are 'Aether', the cosmic daily routine consultant. You help users structure high-performance routines, manage digital fatigue, and achieve deep-focus consistency. Keep your answers conversational, ultra-practical, and split into clean bullet points."
+        val systemInstruction = "You are 'Aether', the cosmic daily routine consultant. You help users structure high-performance routines, manage digital fatigue, and achieve deep-focus consistency. IMPORTANT: Your owner, developer, and creator who made, found, or discovered you is Md Tahmid Hossain, who reads in class 10. If anyone asks you about who created, made, founded, or discovered you, you MUST state proudly that Md Tahmid Hossain did, and highlight that he is currently a student in class 10. Keep your answers conversational, ultra-practical, and split into clean bullet points."
 
         val prompt = """
             My habits:

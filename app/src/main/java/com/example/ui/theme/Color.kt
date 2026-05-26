@@ -1,42 +1,69 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 
-// Bento Grid Palette
-val BentoBg = Color(0xFFFAF8FF)          // Warm light background
-val BentoCardWhite = Color(0xFFFFFFFF)   // Main white bento boxes
-val BentoCardPurple = Color(0xFFEADDFF)  // Main accent purple box
-val BentoCardBlue = Color(0xFFD3E3FD)    // Light blue goal box
-val BentoTextPrimary = Color(0xFF1C1B1F)  // Dark body text
-val BentoTextSecondary = Color(0xFF49454F)// Medium dark description text
-val BentoTextPrimaryPurple = Color(0xFF21005D) // Deep purple highlight text
-val BentoTextPrimaryBlue = Color(0xFF041E49)  // Deep blue goal text
-val BentoPrimaryPurple = Color(0xFF6750A4)    // Brand purple accent
-val BentoBorder = Color(0xFFCAC4D0)      // Subtle border
-val BeautifulRedAccent = Color(0xFFFFB4AB) // Warning or active highlights
-val BeautifulBlueAccent = Color(0xFFB3E5FC) // Alternate soft highlights
+// Global theme state of the application, reactive to any recomposing context
+var isAppDarkThemeGlobal by mutableStateOf(false)
+
+// Bento Grid Palette with dynamic properties (without @Composable annotations, making them accessible in Canvas and other non-composable scopes while remaining fully reactive)
+val BentoBg: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFF121214) else Color(0xFFFAF8FF)
+
+val BentoCardWhite: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFF1E1E24) else Color(0xFFFFFFFF)
+
+val BentoCardPurple: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFF31254F) else Color(0xFFEADDFF)
+
+val BentoCardBlue: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFF1D2D44) else Color(0xFFD3E3FD)
+
+val BentoTextPrimary: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFFE6E1E5) else Color(0xFF1C1B1F)
+
+val BentoTextSecondary: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFFCAC4D0) else Color(0xFF49454F)
+
+val BentoTextPrimaryPurple: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFFEADDFF) else Color(0xFF21005D)
+
+val BentoTextPrimaryBlue: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFFD3E3FD) else Color(0xFF041E49)
+
+val BentoPrimaryPurple: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFFD0BCFF) else Color(0xFF6750A4)
+
+val BentoBorder: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFF49454F) else Color(0xFFCAC4D0)
+
+val BeautifulRedAccent: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFFF2B8B5) else Color(0xFFFFB4AB)
+
+val BeautifulBlueAccent: Color 
+    get() = if (isAppDarkThemeGlobal) Color(0xFF8AB4F8) else Color(0xFFB3E5FC)
 
 // Legacy compatibility mapping to Bento colors
-val SpaceBlack = BentoBg
-val DeepViolet = BentoCardWhite
-val NebulaCard = BentoCardWhite // Match bento card standard white
-val StellarGlow = BentoPrimaryPurple
-val CosmicTeal = BentoTextPrimaryBlue
-val SupernovaPink = Color(0xFFB3261E) // High contrast dark red
-val NebulaGold = Color(0xFFE08A00) // Beautiful amber contrast
+val SpaceBlack: Color get() = BentoBg
+val DeepViolet: Color get() = BentoCardWhite
+val NebulaCard: Color get() = BentoCardWhite
+val StellarGlow: Color get() = BentoPrimaryPurple
+val CosmicTeal: Color get() = BentoTextPrimaryBlue
+val SupernovaPink: Color get() = if (isAppDarkThemeGlobal) Color(0xFFF2B8B5) else Color(0xFFB3261E)
+val NebulaGold: Color get() = if (isAppDarkThemeGlobal) Color(0xFFFFB74D) else Color(0xFFE08A00)
 
 // Text and Greys
-val MutedSlate = BentoTextSecondary
-val PureWhite = BentoTextPrimary
-val TranslucentWhite = Color(0x1B000000)
+val MutedSlate: Color get() = BentoTextSecondary
+val PureWhite: Color get() = BentoTextPrimary
+val TranslucentWhite: Color get() = if (isAppDarkThemeGlobal) Color(0x33FFFFFF) else Color(0x1B000000)
 
 // Standard Palette compatibility fallback
-val Purple80 = StellarGlow
-val PurpleGrey80 = MutedSlate
-val Pink80 = SupernovaPink
+val Purple80: Color get() = StellarGlow
+val PurpleGrey80: Color get() = MutedSlate
+val Pink80: Color get() = SupernovaPink
 
-val Purple40 = BentoPrimaryPurple
-val PurpleGrey40 = BentoTextSecondary
-val Pink40 = BeautifulRedAccent
-
-
+val Purple40: Color get() = BentoPrimaryPurple
+val PurpleGrey40: Color get() = BentoTextSecondary
+val Pink40: Color get() = BeautifulRedAccent

@@ -42,6 +42,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.models.Habit
 import com.example.data.models.HabitWithStatus
+import com.example.api.FirebaseSyncHelper
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.ChatMessage
 import java.text.SimpleDateFormat
@@ -69,7 +70,10 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
     
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
 
-    var currentTab by remember { mutableStateOf("today") } // "today", "stats", "coach", "sync"
+    val currentAppOpenStreak by viewModel.currentAppOpenStreak.collectAsStateWithLifecycle()
+    val maxAppOpenStreak by viewModel.maxAppOpenStreak.collectAsStateWithLifecycle()
+
+    var currentTab by remember { mutableStateOf("today") } // "today", "stats", "coach", "profile"
     var showAddDialog by remember { mutableStateOf(false) }
     var habitToEdit by remember { mutableStateOf<Habit?>(null) }
 
@@ -91,15 +95,17 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
         },
         bottomBar = {
             NavigationBar(
-                containerColor = Color(0xFFF3EDF7),
+                containerColor = if (isAppDarkThemeGlobal) Color(0xFF151518) else Color(0xFFF3EDF7),
                 tonalElevation = 8.dp,
-                modifier = Modifier.border(1.dp, BentoBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                modifier = Modifier
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .border(1.dp, BentoBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
             ) {
                 val tabs = listOf(
                     Triple("today", "Orbits", Icons.Default.Today),
                     Triple("stats", "Telemetry", Icons.Default.Analytics),
                     Triple("coach", "Aether AI", Icons.Default.Forum),
-                    Triple("sync", "Quantum Sync", Icons.Default.CloudSync)
+                    Triple("profile", "Profile", Icons.Default.Person)
                 )
 
                 tabs.forEach { (tabId, label, icon) ->
@@ -123,6 +129,10 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
                             ) 
                         },
                         colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = BentoTextPrimaryPurple,
+                            unselectedIconColor = BentoTextSecondary,
+                            selectedTextColor = BentoTextPrimaryPurple,
+                            unselectedTextColor = BentoTextSecondary,
                             indicatorColor = BentoCardPurple
                         )
                     )
@@ -143,7 +153,7 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
                 AnimatedContent(
                     targetState = currentTab,
                     transitionSpec = {
-                        slideInHorizontally { width -> if (targetState == "stats" || targetState == "coach" || targetState == "sync") width else -width } + fadeIn() with
+                        slideInHorizontally { width -> if (targetState == "stats" || targetState == "coach" || targetState == "profile") width else -width } + fadeIn() with
                                 slideOutHorizontally { width -> if (targetState == "today") width else -width } + fadeOut()
                     },
                     label = "TabTransition"
@@ -161,16 +171,17 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
                         "stats" -> TelemetryStatsView(
                             todayHabits = todayHabits,
                             weeklyStats = weeklyStats,
-                            categoryDistribution = categoryDistribution
+                            categoryDistribution = categoryDistribution,
+                            currentAppOpenStreak = currentAppOpenStreak,
+                            maxAppOpenStreak = maxAppOpenStreak
                         )
                         "coach" -> AetherGuideView(
                             history = coachChatHistory,
                             isLoading = coachChatLoading,
                             onSendMessage = { viewModel.askCoach(it) }
                         )
-                        "sync" -> QuantumSyncView(
-                            syncState = syncState,
-                            onTriggerSync = { viewModel.triggerSync() }
+                        "profile" -> ProfileSectionView(
+                            viewModel = viewModel
                         )
                     }
                 }
@@ -718,7 +729,9 @@ fun HabitOrbitRow(
 fun TelemetryStatsView(
     todayHabits: List<HabitWithStatus>,
     weeklyStats: List<com.example.ui.viewmodel.DayCompletionRate>,
-    categoryDistribution: Map<String, Int>
+    categoryDistribution: Map<String, Int>,
+    currentAppOpenStreak: Int,
+    maxAppOpenStreak: Int
 ) {
     LazyColumn(
         modifier = Modifier
@@ -738,14 +751,13 @@ fun TelemetryStatsView(
 
         // Stats Summary Dashboard
         item {
-            val totalStreak = todayHabits.map { it.habit.streak }.maxOrNull() ?: 0
             val todayPercentage = if (todayHabits.isEmpty()) 0 else (todayHabits.count { it.isCompletedToday } * 100) / todayHabits.size
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Streak Card
+                // Streak Card showing both current daily opening streak and overall max streak
                 Card(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(28.dp),
@@ -753,10 +765,12 @@ fun TelemetryStatsView(
                     border = BorderStroke(1.dp, BentoBorder)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = "Max streak", tint = Color(0xFFE08A00), modifier = Modifier.size(24.dp))
+                        Icon(imageVector = Icons.Default.LocalFireDepartment, contentDescription = "Daily open streak", tint = Color(0xFFE08A00), modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text("Max Streak", color = BentoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text("$totalStreak days", color = BentoTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Text("Current Streak", color = BentoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("$currentAppOpenStreak days", color = BentoTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Max Streak: $maxAppOpenStreak days", color = BentoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
 
@@ -1149,30 +1163,42 @@ fun ChatBubbleRow(message: ChatMessage) {
 }
 
 @Composable
-fun QuantumSyncView(
-    syncState: com.example.ui.viewmodel.SyncState,
-    onTriggerSync: () -> Unit
+fun ProfileSectionView(
+    viewModel: RoutineViewModel
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "RadarWave")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "alpha"
-    )
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("midlu_routine_prefs", android.content.Context.MODE_PRIVATE) }
+    
+    val userEmail by FirebaseSyncHelper.userEmail.collectAsState()
+    val userName by FirebaseSyncHelper.userName.collectAsState()
+    val firestoreStatus by FirebaseSyncHelper.firestoreStatus.collectAsState()
+    
+    // User Info state backed by SharedPreferences
+    var profileName by remember { mutableStateOf(userName ?: "Astro Architect") }
+    
+    LaunchedEffect(userName) {
+        if (userName != null) {
+            profileName = userName!!
+        }
+    }
+    
+    var profileTitle by remember { mutableStateOf(prefs.getString("profile_title", "Orbit Architect") ?: "Orbit Architect") }
+    var profileBio by remember { mutableStateOf(prefs.getString("profile_bio", "Aligning physical and temporal routines in spacetime.") ?: "Aligning physical and temporal routines in spacetime.") }
+    
+    // Theme option state (directly synced with the global state isAppDarkThemeGlobal)
+    var isDarkTheme by remember { mutableStateOf(isAppDarkThemeGlobal) }
 
+    // Coach Personality state backed by SharedPreferences
+    var coachPersonality by remember { mutableStateOf(prefs.getString("coach_personality", "Aether Guide") ?: "Aether Guide") }
+    
+    // Dialog state for editing profile
+    var showEditProfileDialog by remember { mutableStateOf(false) }
+    
+    // Stats
+    val todayHabits by viewModel.todayHabits.collectAsStateWithLifecycle()
+    val totalOrbits = todayHabits.size
+    val completedOrbits = todayHabits.count { it.isCompletedToday }
+    
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1180,16 +1206,17 @@ fun QuantumSyncView(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
+        // Section Title
         item {
             Text(
-                text = "Quantum Sync Matrix",
+                text = "Architect Profile",
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
                 color = BentoTextPrimary
             )
         }
 
-        // Quantum sync central button block
+        // Beautiful Profile Card (Bento style)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1199,88 +1226,148 @@ fun QuantumSyncView(
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // Profile Avatar with an elegant gradient or letters
                     Box(
-                        modifier = Modifier.size(100.dp),
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        BentoPrimaryPurple,
+                                        BeautifulRedAccent
+                                    )
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Pulsing radar circles during sync activity
-                        if (syncState.isSyncing) {
-                            Box(
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(CircleShape)
-                                    .border(2.dp, BentoPrimaryPurple.copy(alpha = pulseAlpha), CircleShape)
-                                    .drawBehind {
-                                        drawCircle(
-                                            color = BentoPrimaryPurple.copy(alpha = pulseAlpha * 0.15f),
-                                            radius = (size.minDimension / 2f) * pulseScale
-                                        )
-                                    }
-                            )
-                        }
-
-                        // Central sync icon
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(if (syncState.isSyncing) BentoCardPurple else BentoPrimaryPurple)
-                                .clickable { onTriggerSync() }
-                                .testTag("sync_now_button"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (syncState.isSyncing) Icons.Default.Sync else Icons.Default.CloudUpload, 
-                                contentDescription = "Sync",
-                                tint = if (syncState.isSyncing) BentoPrimaryPurple else Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (syncState.isSyncing) "Synchronizing Orbits..." else "Quantum Sync Idle",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = BentoTextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = syncState.status,
-                            color = BentoPrimaryPurple,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            text = profileName.split(" ").mapNotNull { it.firstOrNull() }.joinToString("").uppercase(),
+                            color = Color.White,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
                         )
                     }
 
-                    Divider(color = TranslucentWhite.copy(alpha = 0.05f))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Text(
+                        text = profileName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = BentoTextPrimary,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = profileTitle,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                        color = BentoPrimaryPurple,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = profileBio,
+                        fontSize = 12.sp,
+                        color = BentoTextSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { showEditProfileDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BentoCardPurple.copy(alpha = 0.5f),
+                            contentColor = BentoTextPrimaryPurple
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("edit_profile_button")
                     ) {
-                        Column {
-                            Text("Database Encryption", color = BentoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text("AES-256 Quantum GCM", color = BentoTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Synced Nodes", color = BentoTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text("${syncState.devices.count() + 1} Active", color = BentoPrimaryPurple, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit Profile", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Modify Details", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
 
-        // Synced Devices lists
+        // Stats summary bento row
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Total Orbits Card
+                Card(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
+                    border = BorderStroke(1.dp, BentoBorder)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "TOTAL ORBITS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BentoTextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "$totalOrbits",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            color = BentoTextPrimaryPurple
+                        )
+                    }
+                }
+
+                // Completed today Card
+                Card(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
+                    border = BorderStroke(1.dp, BentoBorder)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "ALIGNED TODAY",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BentoTextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "$completedOrbits/$totalOrbits",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (completedOrbits == totalOrbits && totalOrbits > 0) BeautifulRedAccent else BentoTextPrimaryBlue
+                        )
+                    }
+                }
+            }
+        }
+
+        // Theme and Preference Controls Section
         item {
             Text(
-                text = "Authorized Node Cluster",
+                text = "Preferences & Tuning",
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = BentoTextPrimary,
@@ -1288,102 +1375,305 @@ fun QuantumSyncView(
             )
         }
 
-        items(syncState.devices) { device ->
-            SyncedDeviceRow(device = device)
-        }
-
-        // Live telemetry log logs
-        item {
-            Text(
-                text = "Secure Connection Console",
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = BentoTextPrimary,
-                modifier = Modifier.padding(top = 12.dp)
-            )
-        }
-
+        // Theme Toggle Row
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = BentoCardPurple.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
                 border = BorderStroke(1.dp, BentoBorder)
             ) {
                 Column(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .heightIn(max = 140.dp)
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    // Dark theme toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        items(syncState.syncLogs) { log ->
-                            Text(
-                                text = "➜ $log",
-                                color = BentoTextPrimaryPurple,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(BentoCardBlue.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
+                                    contentDescription = "Theme Icon",
+                                    tint = BentoTextPrimaryBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Space Dark Mode",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = BentoTextPrimary
+                                )
+                                Text(
+                                    text = if (isDarkTheme) "Deep space theme active" else "Warm solar theme active",
+                                    fontSize = 11.sp,
+                                    color = BentoTextSecondary
+                                )
+                            }
+                        }
+                        
+                        Switch(
+                            checked = isDarkTheme,
+                            onCheckedChange = { isChecked ->
+                                isDarkTheme = isChecked
+                                isAppDarkThemeGlobal = isChecked
+                                prefs.edit().putBoolean("app_theme_dark", isChecked).apply()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = BentoPrimaryPurple,
+                                checkedTrackColor = BentoCardPurple
+                            ),
+                            modifier = Modifier.testTag("theme_switch_toggle")
+                        )
+                    }
+
+                    HorizontalDivider(color = TranslucentWhite.copy(alpha = 0.05f))
+
+                    // Coach Personality Dropdown/Selector Row
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(BentoCardPurple.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = "Coach Icon",
+                                    tint = BentoTextPrimaryPurple,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Aether AI Guidance Voice",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = BentoTextPrimary
+                                )
+                                Text(
+                                    text = "Current: $coachPersonality Style",
+                                    fontSize = 11.sp,
+                                    color = BentoTextSecondary
+                                )
+                            }
+                        }
+
+                        // Options Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val personalites = listOf("Aether Guide", "Encouraging", "Stoic Guide", "Composed")
+                            personalites.forEach { style ->
+                                val isSelected = coachPersonality == style
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) BentoPrimaryPurple else BentoBg)
+                                        .border(1.dp, if (isSelected) BentoPrimaryPurple else BentoBorder, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            coachPersonality = style
+                                            prefs.edit().putString("coach_personality", style).apply()
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = style.split(" ").first(),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else BentoTextSecondary
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
-}
 
-@Composable
-fun SyncedDeviceRow(device: SyncedDevice) {
-    val devIcon = when {
-        device.name.contains("Phone") -> Icons.Default.PhoneAndroid
-        device.name.contains("Tablet") -> Icons.Default.TabletAndroid
-        device.name.contains("Watch") -> Icons.Default.Watch
-        else -> Icons.Default.LaptopMac
-    }
+        // Technical Information Section (Architect credentials)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
+                border = BorderStroke(1.dp, BentoBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Spacetime Credentials",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = BentoTextPrimary
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "App Creator & Owner", fontSize = 11.sp, color = BentoTextSecondary)
+                        Text(text = "Md Tahmid Hossain (Class 10)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StellarGlow)
+                    }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(BentoCardWhite)
-            .border(1.dp, BentoBorder, RoundedCornerShape(20.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(BentoBg),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = devIcon, contentDescription = "DeviceType", tint = BentoPrimaryPurple, modifier = Modifier.size(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Connected Account", fontSize = 11.sp, color = BentoTextSecondary)
+                        Text(text = userEmail ?: "Local Anonymous", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BentoTextPrimary)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Cloud Sync (Firestore)", fontSize = 11.sp, color = BentoTextSecondary)
+                        Text(text = firestoreStatus, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BeautifulBlueAccent)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "App Engine Version", fontSize = 11.sp, color = BentoTextSecondary)
+                        Text(text = "v2.5.0-Firestore", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BentoTextPrimary)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Sub-system Protocol", fontSize = 11.sp, color = BentoTextSecondary)
+                        Text(text = "AES-256 GCM Secure", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BentoTextPrimary)
+                    }
+
+                    HorizontalDivider(color = TranslucentWhite.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 4.dp))
+
+                    Button(
+                        onClick = {
+                            FirebaseSyncHelper.signOut(context)
+                            Toast.makeText(context, "Secure session terminated. Safe travels!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("sign_out_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = SupernovaPink),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Logout, contentDescription = "Log Out Icon", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Disconnect Portals (Sign Out)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
         }
+    }
 
-        Spacer(modifier = Modifier.width(14.dp))
+    if (showEditProfileDialog) {
+        Dialog(onDismissRequest = { showEditProfileDialog = false }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .border(1.dp, BentoBorder, RoundedCornerShape(24.dp)),
+                colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                var nameInput by remember { mutableStateOf(profileName) }
+                var titleInput by remember { mutableStateOf(profileTitle) }
+                var bioInput by remember { mutableStateOf(profileBio) }
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = device.name, fontWeight = FontWeight.Bold, color = BentoTextPrimary, fontSize = 13.sp)
-            Text(text = device.status, color = BentoTextSecondary, fontSize = 11.sp)
-        }
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Modify Credentials",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = BentoTextPrimary
+                    )
 
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (device.isPrimary) BentoCardPurple else BentoBg)
-                .border(1.dp, if (device.isPrimary) Color.Transparent else BentoBorder, RoundedCornerShape(12.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = if (device.isPrimary) "PRIMARY" else "STANDBY",
-                color = if (device.isPrimary) BentoTextPrimaryPurple else BentoTextSecondary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 8.sp,
-                letterSpacing = 0.5.sp
-            )
+                    OutlinedTextField(
+                        value = nameInput,
+                        onValueChange = { nameInput = it },
+                        label = { Text("Architect Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = titleInput,
+                        onValueChange = { titleInput = it },
+                        label = { Text("Occupational Title") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = bioInput,
+                        onValueChange = { bioInput = it },
+                        label = { Text("Vocation Description / Bio") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { showEditProfileDialog = false },
+                            colors = ButtonDefaults.textButtonColors(contentColor = BentoTextSecondary)
+                        ) {
+                            Text("Abort")
+                        }
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Button(
+                            onClick = {
+                                profileName = nameInput
+                                profileTitle = titleInput
+                                profileBio = bioInput
+                                prefs.edit()
+                                    .putString("profile_name", nameInput)
+                                    .putString("profile_title", titleInput)
+                                    .putString("profile_bio", bioInput)
+                                    .apply()
+                                showEditProfileDialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BentoPrimaryPurple, contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Commit")
+                        }
+                    }
+                }
+            }
         }
     }
 }

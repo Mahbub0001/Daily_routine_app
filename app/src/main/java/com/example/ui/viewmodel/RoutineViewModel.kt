@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.GeminiService
+import com.example.api.FirebaseSyncHelper
 import com.example.data.local.AppDatabase
 import com.example.data.models.Habit
 import com.example.data.models.HabitCompletion
@@ -83,7 +84,17 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
+    // App opening streak state
+    private val _currentAppOpenStreak = MutableStateFlow(0)
+    val currentAppOpenStreak: StateFlow<Int> = _currentAppOpenStreak.asStateFlow()
+
+    private val _maxAppOpenStreak = MutableStateFlow(0)
+    val maxAppOpenStreak: StateFlow<Int> = _maxAppOpenStreak.asStateFlow()
+
     init {
+        // Track the daily app-opening streak
+        trackAppOpenStreak()
+
         // Prepopulate with elegant habits on very first launch to enhance UX straight out of the box!
         viewModelScope.launch {
             try {
@@ -97,14 +108,82 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
                 Log.e("RoutineViewModel", "Error prepopulating default habits or loading reminders: ${e.message}", e)
             }
         }
+
+        // Collect and auto-synchronize habits live to Firestore Database (real-time data sharing)
+        viewModelScope.launch {
+            habits.collect { habitsList ->
+                try {
+                    FirebaseSyncHelper.syncHabitsToCloud(habitsList)
+                } catch (e: Exception) {
+                    Log.e("RoutineViewModel", "Firestore sync exception: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun trackAppOpenStreak() {
+        try {
+            val prefs = getApplication<Application>().getSharedPreferences("midlu_routine_prefs", android.content.Context.MODE_PRIVATE)
+            val todayStr = todayDateString
+            val lastOpenDate = prefs.getString("last_open_date", null)
+            var currentStreak = prefs.getInt("current_app_open_streak", 0)
+            var maxStreak = prefs.getInt("max_app_open_streak", 0)
+
+            if (lastOpenDate == null) {
+                // Very first launch! Set streak to 1
+                currentStreak = 1
+                maxStreak = 1
+                prefs.edit()
+                    .putString("last_open_date", todayStr)
+                    .putInt("current_app_open_streak", currentStreak)
+                    .putInt("max_app_open_streak", maxStreak)
+                    .apply()
+            } else if (lastOpenDate != todayStr) {
+                // Check if last open date was yesterday
+                val isYesterday = checkIfYesterday(lastOpenDate)
+                if (isYesterday) {
+                    currentStreak += 1
+                    if (currentStreak > maxStreak) {
+                        maxStreak = currentStreak
+                    }
+                } else {
+                    // Missed a day! Break streak and reset to 1 (since they are opening the app now today!)
+                    currentStreak = 1
+                }
+                prefs.edit()
+                    .putString("last_open_date", todayStr)
+                    .putInt("current_app_open_streak", currentStreak)
+                    .putInt("max_app_open_streak", maxStreak)
+                    .apply()
+            }
+
+            _currentAppOpenStreak.value = currentStreak
+            _maxAppOpenStreak.value = maxStreak
+        } catch (e: Exception) {
+            Log.e("RoutineViewModel", "Error tracking app open streak: ${e.message}", e)
+        }
+    }
+
+    private fun checkIfYesterday(dateStr: String): Boolean {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val lastDate = sdf.parse(dateStr) ?: return false
+            val todayDate = sdf.parse(todayDateString) ?: return false
+            
+            val diff = todayDate.time - lastDate.time
+            val diffDays = diff / (24 * 60 * 60 * 1000)
+            diffDays == 1L
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private suspend fun prepopulateDefaultHabits() {
         val defaults = listOf(
-            Habit(title = "Morning Meditation", description = "Deep breathing & mindfulness before checking screens", category = "Mind", targetTime = "07:30", streak = 5),
-            Habit(title = "Deep Focus Study", description = "25-minute Pomodoro block on core technical skills", category = "Work", targetTime = "09:00", streak = 8),
-            Habit(title = "Hydration Challenge", description = "Drink 500ml water to kickstart cellular metabolism", category = "Body", targetTime = "08:00", streak = 12),
-            Habit(title = "Cosmic Workspace Cleanse", description = "De-clutter desk to foster sharp focus", category = "Routine", targetTime = "18:00", streak = 3)
+            Habit(title = "Morning Meditation", description = "Deep breathing & mindfulness before checking screens", category = "Mind", targetTime = "07:30", streak = 0),
+            Habit(title = "Deep Focus Study", description = "25-minute Pomodoro block on core technical skills", category = "Work", targetTime = "09:00", streak = 0),
+            Habit(title = "Hydration Challenge", description = "Drink 500ml water to kickstart cellular metabolism", category = "Body", targetTime = "08:00", streak = 0),
+            Habit(title = "Cosmic Workspace Cleanse", description = "De-clutter desk to foster sharp focus", category = "Routine", targetTime = "18:00", streak = 0)
         )
         for (habit in defaults) {
             repository.insertHabit(habit)
