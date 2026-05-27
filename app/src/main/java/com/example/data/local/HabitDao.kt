@@ -17,6 +17,9 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHabit(habit: Habit): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHabits(habits: List<Habit>)
+
     @Update
     suspend fun updateHabit(habit: Habit)
 
@@ -35,6 +38,9 @@ interface HabitDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCompletion(completion: HabitCompletion): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCompletions(completions: List<HabitCompletion>)
 
     @Query("DELETE FROM habit_completions WHERE habitId = :habitId AND dateString = :dateString")
     suspend fun deleteCompletion(habitId: Int, dateString: String)

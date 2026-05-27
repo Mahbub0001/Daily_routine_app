@@ -109,11 +109,11 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        // Collect and auto-synchronize habits live to Firestore Database (real-time data sharing)
+        // Collect and auto-synchronize habits and completion histories live to Firestore Database (real-time data sharing)
         viewModelScope.launch {
-            habits.collect { habitsList ->
+            combine(habits, completions) { h, c -> Pair(h, c) }.collect { (habitsList, completionsList) ->
                 try {
-                    FirebaseSyncHelper.syncHabitsToCloud(habitsList)
+                    FirebaseSyncHelper.syncDataToCloud(habitsList, completionsList)
                 } catch (e: Exception) {
                     Log.e("RoutineViewModel", "Firestore sync exception: ${e.message}")
                 }
@@ -185,9 +185,7 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             Habit(title = "Hydration Challenge", description = "Drink 500ml water to kickstart cellular metabolism", category = "Body", targetTime = "08:00", streak = 0),
             Habit(title = "Cosmic Workspace Cleanse", description = "De-clutter desk to foster sharp focus", category = "Routine", targetTime = "18:00", streak = 0)
         )
-        for (habit in defaults) {
-            repository.insertHabit(habit)
-        }
+        repository.insertHabits(defaults)
     }
 
     fun toggleHabit(habit: Habit) {
@@ -241,14 +239,21 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private var reminderUpdateJob: kotlinx.coroutines.Job? = null
+
     private fun triggerAsyncReminderUpdate() {
-        viewModelScope.launch {
+        reminderUpdateJob?.cancel()
+        reminderUpdateJob = viewModelScope.launch {
             try {
+                // Quiet wait for 4 seconds so fast clicks or multi-toggles don't flood the API
+                kotlinx.coroutines.delay(4000)
                 val activeHabits = todayHabits.value.map { it.habit }
                 val text = GeminiService.getIntelligentReminders(activeHabits)
                 _smartReminders.value = text
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Graceful cancellation on subsequent user interactions
             } catch (e: Exception) {
-                Log.e("RoutineViewModel", "Error in triggerAsyncReminderUpdate: ${e.message}", e)
+                Log.e("RoutineViewModel", "Error in debounced triggerAsyncReminderUpdate: ${e.message}", e)
             }
         }
     }

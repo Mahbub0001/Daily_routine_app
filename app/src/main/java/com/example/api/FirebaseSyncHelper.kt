@@ -52,7 +52,7 @@ object FirebaseSyncHelper {
             var app: FirebaseApp? = null
             try {
                 app = FirebaseApp.getInstance()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.d(TAG, "Default Firebase app instance not found, trying manual detection.")
             }
 
@@ -60,7 +60,7 @@ object FirebaseSyncHelper {
                 // Try to initialize using local configs or resources if any
                 try {
                     app = FirebaseApp.initializeApp(context)
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     Log.w(TAG, "No default google-services.json detected. Attempting offline dynamic proxy...")
                     
                     // Dynamic dynamic programmatic setup warning fallback
@@ -70,19 +70,23 @@ object FirebaseSyncHelper {
                         .setDatabaseUrl("https://nova-routine-db.firebaseio.com")
                         .setProjectId("nova-routine")
                         .build()
-                    app = FirebaseApp.initializeApp(context, options, "nova-routine-app")
+                    try {
+                        app = FirebaseApp.initializeApp(context, options, "nova-routine-app")
+                    } catch (e2: Throwable) {
+                        Log.e(TAG, "Secondary programmatic initialization failed: ${e2.message}")
+                    }
                 }
             }
 
             if (app != null) {
-                firebaseAuthInstance = try { FirebaseAuth.getInstance(app) } catch (e: Exception) { null }
-                firebaseFirestoreInstance = try { FirebaseFirestore.getInstance(app) } catch (e: Exception) { null }
+                firebaseAuthInstance = try { FirebaseAuth.getInstance(app) } catch (e: Throwable) { null }
+                firebaseFirestoreInstance = try { FirebaseFirestore.getInstance(app) } catch (e: Throwable) { null }
                 _firestoreStatus.value = "Active (Connected & Secured)"
                 Log.i(TAG, "Firebase SDK initialized successfully.")
             } else {
                 _firestoreStatus.value = "Offline Local Sandbox"
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error initializing real Firebase: ${e.message}", e)
             _firestoreStatus.value = "Offline Local Sandbox"
             isFallbackInitialized = true
@@ -98,6 +102,55 @@ object FirebaseSyncHelper {
             _userEmail.value = savedEmail
             _userName.value = savedName ?: savedEmail.substringBefore("@")
             _isUserAuthenticated.value = true
+        }
+    }
+
+    /**
+     * Live sync of both habits and completion logs to Firebase Firestore.
+     */
+    fun syncDataToCloud(habitsList: List<Habit>, completionsList: List<com.example.data.models.HabitCompletion>) {
+        val uid = _userId.value ?: return
+        val db = firebaseFirestoreInstance ?: return
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val userRef = db.collection("users").document(uid)
+
+                val habitsMap = habitsList.map { habit ->
+                    mapOf(
+                        "id" to habit.id,
+                        "title" to habit.title,
+                        "description" to habit.description,
+                        "category" to habit.category,
+                        "targetTime" to habit.targetTime,
+                        "createdAt" to habit.createdAt,
+                        "streak" to habit.streak,
+                        "lastCompleted" to habit.lastCompleted
+                    )
+                }
+
+                val completionsMap = completionsList.map { comp ->
+                    mapOf(
+                        "id" to comp.id,
+                        "habitId" to comp.habitId,
+                        "dateString" to comp.dateString,
+                        "timestamp" to comp.timestamp
+                    )
+                }
+
+                val data = mapOf(
+                    "habits" to habitsMap,
+                    "completions" to completionsMap,
+                    "lastSyncedAt" to System.currentTimeMillis()
+                )
+
+                userRef.set(data, SetOptions.merge())
+                _firestoreStatus.value = "Active (Connected & Synced)"
+                Log.d(TAG, "Successfully backed up ${habitsList.size} habits and ${completionsList.size} completions to Firestore cloud.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed syncing data to Firestore: ${e.message}")
+                _firestoreStatus.value = "Sync Error"
+            }
         }
     }
 
@@ -136,6 +189,79 @@ object FirebaseSyncHelper {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed syncing to Firestore: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Retrieves all routine states and completions from Firestore to sync into local database
+     */
+    suspend fun fetchDataFromCloudAndSyncLocal(context: Context, uid: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val db = firebaseFirestoreInstance ?: return@withContext
+        try {
+            val userRef = db.collection("users").document(uid)
+            val document = userRef.get().await()
+            if (document.exists()) {
+                val appDb = com.example.data.local.AppDatabase.getDatabase(context)
+                val dao = appDb.habitDao()
+
+                // Fetch and restore habits
+                val habitsList = document.get("habits") as? List<Map<String, Any>>
+                if (habitsList != null) {
+                    val habitsToInsert = mutableListOf<Habit>()
+                    for (habitMap in habitsList) {
+                        val title = habitMap["title"] as? String ?: ""
+                        val description = habitMap["description"] as? String ?: ""
+                        val category = habitMap["category"] as? String ?: ""
+                        val targetTime = habitMap["targetTime"] as? String ?: ""
+                        val streak = (habitMap["streak"] as? Long)?.toInt() ?: 0
+                        val lastCompleted = habitMap["lastCompleted"] as? Long ?: 0L
+                        val id = (habitMap["id"] as? Long)?.toInt() ?: 0
+                        val createdAt = habitMap["createdAt"] as? Long ?: System.currentTimeMillis()
+
+                        val habit = Habit(
+                            id = id,
+                            title = title,
+                            description = description,
+                            category = category,
+                            targetTime = targetTime,
+                            streak = streak,
+                            lastCompleted = lastCompleted,
+                            createdAt = createdAt
+                        )
+                        habitsToInsert.add(habit)
+                    }
+                    if (habitsToInsert.isNotEmpty()) {
+                        dao.insertHabits(habitsToInsert)
+                    }
+                }
+
+                // Fetch and restore completions
+                val completionsList = document.get("completions") as? List<Map<String, Any>>
+                if (completionsList != null) {
+                    val completionsToInsert = mutableListOf<com.example.data.models.HabitCompletion>()
+                    for (compMap in completionsList) {
+                        val id = (compMap["id"] as? Long)?.toInt() ?: 0
+                        val habitId = (compMap["habitId"] as? Long)?.toInt() ?: 0
+                        val dateString = compMap["dateString"] as? String ?: ""
+                        val timestamp = (compMap["timestamp"] as? Long) ?: System.currentTimeMillis()
+
+                        val completion = com.example.data.models.HabitCompletion(
+                            id = id,
+                            habitId = habitId,
+                            dateString = dateString,
+                            timestamp = timestamp
+                        )
+                        completionsToInsert.add(completion)
+                    }
+                    if (completionsToInsert.isNotEmpty()) {
+                        dao.insertCompletions(completionsToInsert)
+                    }
+                }
+                _firestoreStatus.value = "Active (Connected & Synced)"
+                Log.d(TAG, "Restored all habits and completion data from FireStore Cloud to local Db.")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore cloud habits/completions: ${e.message}")
         }
     }
 
@@ -191,9 +317,50 @@ object FirebaseSyncHelper {
                 .putString("email", _userEmail.value)
                 .putString("name", _userName.value)
                 .apply()
+
+            if (!isSignUp) {
+                _userId.value?.let { uid ->
+                    fetchDataFromCloudAndSyncLocal(context, uid)
+                }
+            }
         }
 
         return success
+    }
+
+    /**
+     * Authenticates with Firebase using a real Google ID token
+     */
+    suspend fun authWithGoogleCredential(context: Context, idToken: String, email: String, name: String): Boolean {
+        val auth = firebaseAuthInstance
+        if (auth != null) {
+            try {
+                val credential = com.google.firebase.auth.GoogleAuthProvider.getCredential(idToken, null)
+                val result = auth.signInWithCredential(credential).await()
+                val user = result.user
+                if (user != null) {
+                    _userId.value = user.uid
+                    _userEmail.value = user.email
+                    _userName.value = user.displayName ?: name
+                    _isUserAuthenticated.value = true
+
+                    val prefs = context.getSharedPreferences("nova_routine_auth", Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("uid", user.uid)
+                        .putString("email", user.email)
+                        .putString("name", user.displayName ?: name)
+                        .apply()
+
+                    fetchDataFromCloudAndSyncLocal(context, user.uid)
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Firebase Google Sign-In with credential failed: ${e.message}", e)
+            }
+        }
+        
+        // Fallback option in case Firebase Services are blocklisted/not linked on developer console
+        return authWithGoogle(context, "google_" + UUID.nameUUIDFromBytes(email.toByteArray()).toString(), email, name)
     }
 
     /**
@@ -216,6 +383,9 @@ object FirebaseSyncHelper {
         // Sync dynamically if Firestore is configured
         _firestoreStatus.value = "Active (Connected & Secured)"
         
+        // Re-pull and restore offline data if existing
+        fetchDataFromCloudAndSyncLocal(context, accountId)
+
         return true
     }
 

@@ -17,6 +17,14 @@ class HabitRepository(private val habitDao: HabitDao) {
         return habitDao.insertHabit(habit)
     }
 
+    suspend fun insertHabits(habits: List<Habit>) {
+        habitDao.insertHabits(habits)
+    }
+
+    suspend fun insertCompletions(completions: List<HabitCompletion>) {
+        habitDao.insertCompletions(completions)
+    }
+
     suspend fun updateHabit(habit: Habit) {
         habitDao.updateHabit(habit)
     }
