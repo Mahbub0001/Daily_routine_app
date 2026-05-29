@@ -59,6 +59,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var showPassword by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
+    var showSimulatedGoogleAuthDialog by remember { mutableStateOf(false) }
+    var simulatedEmail by remember { mutableStateOf("nibirbhuiyan18@gmail.com") }
+    var simulatedName by remember { mutableStateOf("Nibir Bhuiyan") }
+
     // Real Google Sign-In client and callback setup
     val gso = remember {
         try {
@@ -459,26 +463,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                             if (hasPlayServices && signInIntent != null) {
                                 googleSignInLauncher.launch(signInIntent)
                             } else {
-                                // Direct fallback to the user's primary address to ignore sandbox boundaries
-                                FirebaseSyncHelper.authWithGoogle(
-                                    context = context,
-                                    accountId = "google_nibirbhuiyan18",
-                                    email = "nibirbhuiyan18@gmail.com",
-                                    name = "Nibir Bhuiyan"
-                                )
-                                Toast.makeText(context, "Successfully authenticated as nibirbhuiyan18@gmail.com (Google Secure Connect)!", Toast.LENGTH_SHORT).show()
-                                onAuthSuccess()
+                                // Offer simulated Account Selector for testing in developer context
+                                showSimulatedGoogleAuthDialog = true
                             }
                         } catch (e: Throwable) {
                             Log.e("AuthScreen", "Google launcher failed, using secure dynamic fallback", e)
-                            FirebaseSyncHelper.authWithGoogle(
-                                context = context,
-                                accountId = "google_nibirbhuiyan18",
-                                email = "nibirbhuiyan18@gmail.com",
-                                name = "Nibir Bhuiyan"
-                            )
-                            Toast.makeText(context, "Successfully authenticated as nibirbhuiyan18@gmail.com (Google Secure Connect)!", Toast.LENGTH_SHORT).show()
-                            onAuthSuccess()
+                            showSimulatedGoogleAuthDialog = true
                         } finally {
                             isLoading = false
                         }
@@ -543,6 +533,106 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.SansSerif
                 )
+            }
+        }
+
+        if (showSimulatedGoogleAuthDialog) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showSimulatedGoogleAuthDialog = false }) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .border(1.dp, BentoBorder, RoundedCornerShape(24.dp)),
+                    colors = CardDefaults.cardColors(containerColor = BentoCardWhite),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "Cosmic Google Auth Conduit",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = BentoTextPrimary
+                        )
+                        Text(
+                            text = "Note: Google Play Services are missing on this virtual node. Input any Google developer credentials below to simulate a live secure authenticated context.",
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = MutedSlate
+                        )
+
+                        OutlinedTextField(
+                            value = simulatedEmail,
+                            onValueChange = { simulatedEmail = it },
+                            label = { Text("Simulated Google Email") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = simulatedName,
+                            onValueChange = { simulatedName = it },
+                            label = { Text("Simulated Display Name") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = { showSimulatedGoogleAuthDialog = false },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MutedSlate)
+                            ) {
+                                Text("Abort")
+                            }
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            Button(
+                                onClick = {
+                                    if (simulatedEmail.isBlank() || simulatedName.isBlank()) {
+                                        Toast.makeText(context, "All portals require entry parameters.", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    showSimulatedGoogleAuthDialog = false
+                                    isLoading = true
+                                    scope.launch {
+                                        try {
+                                            val accountId = "google_" + java.util.UUID.nameUUIDFromBytes(simulatedEmail.trim().toByteArray()).toString()
+                                            val success = FirebaseSyncHelper.authWithGoogle(
+                                                context = context,
+                                                accountId = accountId,
+                                                email = simulatedEmail.trim(),
+                                                name = simulatedName.trim()
+                                            )
+                                            if (success) {
+                                                Toast.makeText(context, "Successfully authenticated as ${simulatedEmail.trim()}!", Toast.LENGTH_SHORT).show()
+                                                onAuthSuccess()
+                                            } else {
+                                                Toast.makeText(context, "Failed to connect simulated portal.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Conduit error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isLoading = false
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = StellarGlow, contentColor = Color.White),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Establish Connection")
+                            }
+                        }
+                    }
+                }
             }
         }
     }

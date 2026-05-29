@@ -12,6 +12,23 @@ class HabitRepository(private val habitDao: HabitDao) {
 
     val allHabits: Flow<List<Habit>> = habitDao.getAllHabits()
     val allCompletions: Flow<List<HabitCompletion>> = habitDao.getAllCompletions()
+    val allChatMessages: Flow<List<com.example.data.models.ChatMessage>> = habitDao.getAllChatMessages()
+
+    suspend fun insertChatMessage(message: com.example.data.models.ChatMessage) {
+        habitDao.insertChatMessage(message)
+    }
+
+    suspend fun insertChatMessages(messages: List<com.example.data.models.ChatMessage>) {
+        habitDao.insertChatMessages(messages)
+    }
+
+    suspend fun deleteChatMessageById(id: String) {
+        habitDao.deleteChatMessageById(id)
+    }
+
+    suspend fun deleteAllChatMessages() {
+        habitDao.deleteAllChatMessages()
+    }
 
     suspend fun insertHabit(habit: Habit): Long {
         return habitDao.insertHabit(habit)

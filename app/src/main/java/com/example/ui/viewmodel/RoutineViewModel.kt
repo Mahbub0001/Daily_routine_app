@@ -10,6 +10,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.models.Habit
 import com.example.data.models.HabitCompletion
 import com.example.data.models.HabitWithStatus
+import com.example.data.models.ChatMessage
 import com.example.data.repository.HabitRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -65,17 +66,47 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     private val _smartRemindersLoading = MutableStateFlow(false)
     val smartRemindersLoading: StateFlow<Boolean> = _smartRemindersLoading.asStateFlow()
 
-    // AI Coach Chat
-    private val _coachChatHistory = MutableStateFlow<List<ChatMessage>>(
-        listOf(
-            ChatMessage(
-                sender = "AI",
-                text = "✨ Salutations, developer of rituals! I am **Midlu AI**, your intelligent habit mentor. I analyze your consistency patterns and suggest structural optimizations to level up your focus.",
-                timestamp = System.currentTimeMillis()
+    val coachChatHistory: StateFlow<List<ChatMessage>> = repository.allChatMessages
+        .onEach { list ->
+            if (list.isEmpty()) {
+                viewModelScope.launch {
+                    try {
+                        repository.insertChatMessage(
+                            ChatMessage(
+                                id = "default_welcome",
+                                sender = "AI",
+                                text = "✨ Salutations, developer of rituals! I am **Midlu AI**, your intelligent habit mentor. I analyze your consistency patterns and suggest structural optimizations to level up your focus.",
+                                timestamp = System.currentTimeMillis()
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.e("RoutineViewModel", "Error prepopulating welcome chat: ${e.message}")
+                    }
+                }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = listOf(
+                ChatMessage(
+                    id = "default_welcome",
+                    sender = "AI",
+                    text = "✨ Salutations, developer of rituals! I am **Midlu AI**, your intelligent habit mentor. I analyze your consistency patterns and suggest structural optimizations to level up your focus.",
+                    timestamp = System.currentTimeMillis()
+                )
             )
         )
-    )
-    val coachChatHistory: StateFlow<List<ChatMessage>> = _coachChatHistory.asStateFlow()
+
+    fun deleteChatMessage(messageId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteChatMessageById(messageId)
+            } catch (e: Exception) {
+                Log.e("RoutineViewModel", "Error deleting chat message: ${e.message}", e)
+            }
+        }
+    }
 
     private val _coachChatLoading = MutableStateFlow(false)
     val coachChatLoading: StateFlow<Boolean> = _coachChatLoading.asStateFlow()
@@ -109,11 +140,25 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        // Collect and auto-synchronize habits and completion histories live to Firestore Database (real-time data sharing)
+        // Collect and auto-synchronize habits, completion histories, chats, and open streaks live to Firestore Database (real-time data sharing)
         viewModelScope.launch {
-            combine(habits, completions) { h, c -> Pair(h, c) }.collect { (habitsList, completionsList) ->
+            combine(
+                habits,
+                completions,
+                repository.allChatMessages,
+                currentAppOpenStreak,
+                maxAppOpenStreak
+            ) { hList, cList, chatList, currentS, maxS ->
+                SyncPayload(hList, cList, chatList, currentS, maxS)
+            }.collect { payload ->
                 try {
-                    FirebaseSyncHelper.syncDataToCloud(habitsList, completionsList)
+                    FirebaseSyncHelper.syncDataToCloud(
+                        habitsList = payload.habits,
+                        completionsList = payload.completions,
+                        chatsList = payload.chats,
+                        currentStreak = payload.currentStreak,
+                        maxStreak = payload.maxStreak
+                    )
                 } catch (e: Exception) {
                     Log.e("RoutineViewModel", "Firestore sync exception: ${e.message}")
                 }
@@ -277,7 +322,13 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
     fun askCoach(query: String) {
         if (query.isBlank() || _coachChatLoading.value) return
         val userMsg = ChatMessage(sender = "User", text = query, timestamp = System.currentTimeMillis())
-        _coachChatHistory.value = _coachChatHistory.value + userMsg
+        viewModelScope.launch {
+            try {
+                repository.insertChatMessage(userMsg)
+            } catch (e: Exception) {
+                Log.e("RoutineViewModel", "Error saving user message: ${e.message}")
+            }
+        }
 
         _coachChatLoading.value = true
         viewModelScope.launch {
@@ -285,12 +336,16 @@ class RoutineViewModel(application: Application) : AndroidViewModel(application)
                 val activeHabits = todayHabits.value.map { it.habit }
                 val response = GeminiService.askHabitCoach(query, activeHabits)
                 val aiMsg = ChatMessage(sender = "AI", text = response, timestamp = System.currentTimeMillis())
-                _coachChatHistory.value = _coachChatHistory.value + aiMsg
+                repository.insertChatMessage(aiMsg)
                 _coachChatLoading.value = false
             } catch (e: Exception) {
                 Log.e("RoutineViewModel", "Error asking coach: ${e.message}", e)
                 val errMsg = ChatMessage(sender = "AI", text = "I failed to secure alignment with the quantum intelligence matrix. Please re-try sending your query.", timestamp = System.currentTimeMillis())
-                _coachChatHistory.value = _coachChatHistory.value + errMsg
+                try {
+                    repository.insertChatMessage(errMsg)
+                } catch (e2: Exception) {
+                    Log.e("RoutineViewModel", "Error saving fallback message: ${e2.message}")
+                }
                 _coachChatLoading.value = false
             }
         }
@@ -372,10 +427,12 @@ data class DayCompletionRate(
     val completedCount: Int
 )
 
-data class ChatMessage(
-    val sender: String, // "User" or "AI"
-    val text: String,
-    val timestamp: Long
+private data class SyncPayload(
+    val habits: List<com.example.data.models.Habit>,
+    val completions: List<com.example.data.models.HabitCompletion>,
+    val chats: List<com.example.data.models.ChatMessage>,
+    val currentStreak: Int,
+    val maxStreak: Int
 )
 
 data class SyncedDevice(

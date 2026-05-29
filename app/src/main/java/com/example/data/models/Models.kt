@@ -23,7 +23,17 @@ data class HabitCompletion(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+
 data class HabitWithStatus(
     val habit: Habit,
     val isCompletedToday: Boolean
 )
+
+@Entity(tableName = "chat_messages")
+data class ChatMessage(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val sender: String, // "User" or "AI"
+    val text: String,
+    val timestamp: Long
+)
+

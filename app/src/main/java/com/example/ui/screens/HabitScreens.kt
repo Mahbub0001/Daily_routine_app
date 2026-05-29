@@ -44,7 +44,9 @@ import com.example.data.models.Habit
 import com.example.data.models.HabitWithStatus
 import com.example.api.FirebaseSyncHelper
 import com.example.ui.theme.*
-import com.example.ui.viewmodel.ChatMessage
+import com.example.data.models.ChatMessage
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
@@ -178,7 +180,8 @@ fun MainHabitScreen(viewModel: RoutineViewModel) {
                         "coach" -> AetherGuideView(
                             history = coachChatHistory,
                             isLoading = coachChatLoading,
-                            onSendMessage = { viewModel.askCoach(it) }
+                            onSendMessage = { viewModel.askCoach(it) },
+                            onDeleteMessage = { viewModel.deleteChatMessage(it) }
                         )
                         "profile" -> ProfileSectionView(
                             viewModel = viewModel
@@ -962,10 +965,21 @@ fun TelemetryStatsView(
 fun AetherGuideView(
     history: List<ChatMessage>,
     isLoading: Boolean,
-    onSendMessage: (String) -> Unit
+    onSendMessage: (String) -> Unit,
+    onDeleteMessage: (String) -> Unit
 ) {
     var rawInput by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    LaunchedEffect(history.size, isLoading) {
+        if (history.isNotEmpty() || isLoading) {
+            val lastIdx = history.size + (if (isLoading) 1 else 0) - 1
+            if (lastIdx >= 0) {
+                listState.animateScrollToItem(lastIdx)
+            }
+        }
+    }
 
     val quickQuestions = listOf(
         "Design standard morning core routine",
@@ -1018,17 +1032,15 @@ fun AetherGuideView(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    reverseLayout = true // Scroll to bottom when new messages join!
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Reverse list for easy chat flow
-                    val reversedHistory = history.reversed()
-                    items(reversedHistory) { message ->
-                        ChatBubbleRow(message = message)
+                    items(history, key = { it.id }) { message ->
+                        ChatBubbleRow(message = message, onDeleteMessage = onDeleteMessage)
                     }
                     if (isLoading) {
                         item {
@@ -1045,9 +1057,9 @@ fun AetherGuideView(
                                         .border(1.dp, StellarGlow.copy(alpha = 0.2f), RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 16.dp, topStart = 16.dp, topEnd = 16.dp))
                                         .padding(12.dp)
                                 ) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         CircularProgressIndicator(color = StellarGlow, strokeWidth = 1.5.dp, modifier = Modifier.size(12.dp))
-                                        Text("Decoding query structure...", color = MutedSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("Midlu AI is typing...", color = CosmicTeal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -1107,56 +1119,98 @@ fun AetherGuideView(
 }
 
 @Composable
-fun ChatBubbleRow(message: ChatMessage) {
+fun ChatBubbleRow(
+    message: ChatMessage,
+    onDeleteMessage: (String) -> Unit
+) {
     val isAI = message.sender == "AI"
+    var showCrossButton by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isAI) Arrangement.Start else Arrangement.End
+        horizontalArrangement = if (isAI) Arrangement.Start else Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        val bubbleShape = RoundedCornerShape(
-            topStart = 20.dp,
-            topEnd = 20.dp,
-            bottomStart = if (isAI) 4.dp else 20.dp,
-            bottomEnd = if (isAI) 20.dp else 4.dp
-        )
         Box(
-            modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .clip(bubbleShape)
-                .background(if (isAI) BentoCardPurple else BentoPrimaryPurple)
-                .border(
-                    width = 1.dp,
-                    color = if (isAI) BentoBorder else Color.Transparent,
-                    shape = bubbleShape
-                )
-                .padding(14.dp)
+            modifier = Modifier.fillMaxWidth(0.9f)
         ) {
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isAI) Icons.Default.Cyclone else Icons.Default.Face, 
-                        contentDescription = message.sender,
-                        tint = if (isAI) BentoTextPrimaryPurple else Color.White,
-                        modifier = Modifier.size(14.dp)
+            val bubbleShape = RoundedCornerShape(
+                topStart = 20.dp,
+                topEnd = 20.dp,
+                bottomStart = if (isAI) 4.dp else 20.dp,
+                bottomEnd = if (isAI) 20.dp else 4.dp
+            )
+            
+            Box(
+                modifier = Modifier
+                    .align(if (isAI) Alignment.CenterStart else Alignment.CenterEnd)
+                    .clip(bubbleShape)
+                    .background(if (isAI) BentoCardPurple else BentoPrimaryPurple)
+                    .border(
+                        width = 1.dp,
+                        color = if (isAI) BentoBorder else Color.Transparent,
+                        shape = bubbleShape
                     )
+                    .pointerInput(message.id) {
+                        detectTapGestures(
+                            onLongPress = {
+                                showCrossButton = !showCrossButton
+                            }
+                        )
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isAI) Icons.Default.Cyclone else Icons.Default.Face, 
+                            contentDescription = message.sender,
+                            tint = if (isAI) BentoTextPrimaryPurple else Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = if (isAI) "Midlu AI" else "You",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isAI) BentoTextPrimaryPurple else Color.White.copy(alpha = 0.8f),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = if (isAI) "Midlu AI" else "You",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        color = if (isAI) BentoTextPrimaryPurple else Color.White.copy(alpha = 0.8f),
-                        letterSpacing = 0.5.sp
+                        text = message.text,
+                        color = if (isAI) BentoTextPrimary else Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = message.text,
-                    color = if (isAI) BentoTextPrimary else Color.White,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
+            }
+
+            // Cross button that appears on hold
+            if (showCrossButton) {
+                Box(
+                    modifier = Modifier
+                        .align(if (isAI) Alignment.TopEnd else Alignment.TopStart)
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE53935))
+                        .clickable {
+                            onDeleteMessage(message.id)
+                            showCrossButton = false
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Delete chat message",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
     }
@@ -1171,19 +1225,22 @@ fun ProfileSectionView(
     
     val userEmail by FirebaseSyncHelper.userEmail.collectAsState()
     val userName by FirebaseSyncHelper.userName.collectAsState()
+    val userId by FirebaseSyncHelper.userId.collectAsState()
     val firestoreStatus by FirebaseSyncHelper.firestoreStatus.collectAsState()
+    
+    val userPrefix = userId ?: "anonymous"
     
     // User Info state backed by SharedPreferences
     var profileName by remember { mutableStateOf(userName ?: "Astro Architect") }
+    var profileTitle by remember { mutableStateOf("Orbit Architect") }
+    var profileBio by remember { mutableStateOf("Aligning physical and temporal routines in spacetime.") }
     
-    LaunchedEffect(userName) {
-        if (userName != null) {
-            profileName = userName!!
-        }
+    LaunchedEffect(userPrefix, userName) {
+        val savedName = prefs.getString("${userPrefix}_profile_name", null)
+        profileName = savedName ?: userName ?: "Astro Architect"
+        profileTitle = prefs.getString("${userPrefix}_profile_title", "Orbit Architect") ?: "Orbit Architect"
+        profileBio = prefs.getString("${userPrefix}_profile_bio", "Aligning physical and temporal routines in spacetime.") ?: "Aligning physical and temporal routines in spacetime."
     }
-    
-    var profileTitle by remember { mutableStateOf(prefs.getString("profile_title", "Orbit Architect") ?: "Orbit Architect") }
-    var profileBio by remember { mutableStateOf(prefs.getString("profile_bio", "Aligning physical and temporal routines in spacetime.") ?: "Aligning physical and temporal routines in spacetime.") }
     
     // Theme option state (directly synced with the global state isAppDarkThemeGlobal)
     var isDarkTheme by remember { mutableStateOf(isAppDarkThemeGlobal) }
@@ -1660,9 +1717,9 @@ fun ProfileSectionView(
                                 profileTitle = titleInput
                                 profileBio = bioInput
                                 prefs.edit()
-                                    .putString("profile_name", nameInput)
-                                    .putString("profile_title", titleInput)
-                                    .putString("profile_bio", bioInput)
+                                    .putString("${userPrefix}_profile_name", nameInput)
+                                    .putString("${userPrefix}_profile_title", titleInput)
+                                    .putString("${userPrefix}_profile_bio", bioInput)
                                     .apply()
                                 showEditProfileDialog = false
                             },

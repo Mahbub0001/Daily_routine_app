@@ -6,8 +6,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.models.Habit
 import com.example.data.models.HabitCompletion
+import com.example.data.models.ChatMessage
 
-@Database(entities = [Habit::class, HabitCompletion::class], version = 1, exportSchema = false)
+@Database(entities = [Habit::class, HabitCompletion::class, ChatMessage::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun habitDao(): HabitDao

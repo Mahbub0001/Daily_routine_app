@@ -3,6 +3,7 @@ package com.example.data.local
 import androidx.room.*
 import com.example.data.models.Habit
 import com.example.data.models.HabitCompletion
+import com.example.data.models.ChatMessage
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -10,6 +11,9 @@ interface HabitDao {
 
     @Query("SELECT * FROM habits ORDER BY createdAt DESC")
     fun getAllHabits(): Flow<List<Habit>>
+
+    @Query("SELECT * FROM habits ORDER BY createdAt DESC")
+    suspend fun getAllHabitsSync(): List<Habit>
 
     @Query("SELECT * FROM habits WHERE id = :id")
     suspend fun getHabitById(id: Int): Habit?
@@ -47,4 +51,20 @@ interface HabitDao {
 
     @Query("DELETE FROM habit_completions WHERE habitId = :habitId")
     suspend fun deleteCompletionsForHabit(habitId: Int)
+
+    // AI Chat History queries
+    @Query("SELECT * FROM chat_messages ORDER BY timestamp ASC")
+    fun getAllChatMessages(): Flow<List<ChatMessage>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChatMessage(message: ChatMessage)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChatMessages(messages: List<ChatMessage>)
+
+    @Query("DELETE FROM chat_messages WHERE id = :id")
+    suspend fun deleteChatMessageById(id: String)
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun deleteAllChatMessages()
 }

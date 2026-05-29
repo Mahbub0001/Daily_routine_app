@@ -106,9 +106,15 @@ object FirebaseSyncHelper {
     }
 
     /**
-     * Live sync of both habits and completion logs to Firebase Firestore.
+     * Live sync of both habits, completion logs, chats, and open streaks to Firebase Firestore.
      */
-    fun syncDataToCloud(habitsList: List<Habit>, completionsList: List<com.example.data.models.HabitCompletion>) {
+    fun syncDataToCloud(
+        habitsList: List<Habit>,
+        completionsList: List<com.example.data.models.HabitCompletion>,
+        chatsList: List<com.example.data.models.ChatMessage> = emptyList(),
+        currentStreak: Int = 0,
+        maxStreak: Int = 0
+    ) {
         val uid = _userId.value ?: return
         val db = firebaseFirestoreInstance ?: return
 
@@ -138,15 +144,27 @@ object FirebaseSyncHelper {
                     )
                 }
 
+                val chatsMap = chatsList.map { chat ->
+                    mapOf(
+                        "id" to chat.id,
+                        "sender" to chat.sender,
+                        "text" to chat.text,
+                        "timestamp" to chat.timestamp
+                    )
+                }
+
                 val data = mapOf(
                     "habits" to habitsMap,
                     "completions" to completionsMap,
+                    "chats" to chatsMap,
+                    "currentStreak" to currentStreak,
+                    "maxStreak" to maxStreak,
                     "lastSyncedAt" to System.currentTimeMillis()
                 )
 
                 userRef.set(data, SetOptions.merge())
                 _firestoreStatus.value = "Active (Connected & Synced)"
-                Log.d(TAG, "Successfully backed up ${habitsList.size} habits and ${completionsList.size} completions to Firestore cloud.")
+                Log.d(TAG, "Successfully backed up ${habitsList.size} habits, ${completionsList.size} completions, and ${chatsList.size} chats to Firestore cloud.")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed syncing data to Firestore: ${e.message}")
                 _firestoreStatus.value = "Sync Error"
@@ -200,9 +218,12 @@ object FirebaseSyncHelper {
         try {
             val userRef = db.collection("users").document(uid)
             val document = userRef.get().await()
+            val appDb = com.example.data.local.AppDatabase.getDatabase(context)
+            val dao = appDb.habitDao()
+
             if (document.exists()) {
-                val appDb = com.example.data.local.AppDatabase.getDatabase(context)
-                val dao = appDb.habitDao()
+                // Clear whatever old local tables are currently in DB before writing the fetched cloud data!
+                appDb.clearAllTables()
 
                 // Fetch and restore habits
                 val habitsList = document.get("habits") as? List<Map<String, Any>>
@@ -257,11 +278,60 @@ object FirebaseSyncHelper {
                         dao.insertCompletions(completionsToInsert)
                     }
                 }
+
+                // Fetch and restore chat messages
+                val chatsList = document.get("chats") as? List<Map<String, Any>>
+                if (chatsList != null) {
+                    val chatsToInsert = mutableListOf<com.example.data.models.ChatMessage>()
+                    for (chatMap in chatsList) {
+                        val id = chatMap["id"] as? String ?: java.util.UUID.randomUUID().toString()
+                        val sender = chatMap["sender"] as? String ?: "AI"
+                        val text = chatMap["text"] as? String ?: ""
+                        val timestamp = chatMap["timestamp"] as? Long ?: System.currentTimeMillis()
+
+                        val chatMessage = com.example.data.models.ChatMessage(
+                            id = id,
+                            sender = sender,
+                            text = text,
+                            timestamp = timestamp
+                        )
+                        chatsToInsert.add(chatMessage)
+                    }
+                    if (chatsToInsert.isNotEmpty()) {
+                        dao.deleteAllChatMessages()
+                        dao.insertChatMessages(chatsToInsert)
+                    }
+                }
+
+                // Fetch and restore streaks
+                val currentStreak = (document.get("currentStreak") as? Long)?.toInt()
+                val maxStreak = (document.get("maxStreak") as? Long)?.toInt()
+                if (currentStreak != null || maxStreak != null) {
+                    val prefs = context.getSharedPreferences("midlu_routine_prefs", Context.MODE_PRIVATE)
+                    val edit = prefs.edit()
+                    if (currentStreak != null) edit.putInt("current_app_open_streak", currentStreak)
+                    if (maxStreak != null) edit.putInt("max_app_open_streak", maxStreak)
+                    edit.apply()
+                }
+
                 _firestoreStatus.value = "Active (Connected & Synced)"
-                Log.d(TAG, "Restored all habits and completion data from FireStore Cloud to local Db.")
+                Log.d(TAG, "Restored all habits, completions, chats, and streaks from FireStore Cloud to local Db.")
+            } else {
+                // Newly created or empty account in FireStore!
+                // Clear whatever old local tables are currently in DB:
+                appDb.clearAllTables()
+                val defaults = listOf(
+                    Habit(title = "Morning Meditation", description = "Deep breathing & mindfulness before checking screens", category = "Mind", targetTime = "07:30", streak = 0),
+                    Habit(title = "Deep Focus Study", description = "25-minute Pomodoro block on core technical skills", category = "Work", targetTime = "09:00", streak = 0),
+                    Habit(title = "Hydration Challenge", description = "Drink 500ml water to kickstart cellular metabolism", category = "Body", targetTime = "08:00", streak = 0),
+                    Habit(title = "Cosmic Workspace Cleanse", description = "De-clutter desk to foster sharp focus", category = "Routine", targetTime = "18:00", streak = 0)
+                )
+                dao.insertHabits(defaults)
+                _firestoreStatus.value = "Active (Connected & Synced)"
+                Log.d(TAG, "Dynamic prepopulated default habits for new empty cloud account.")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to restore cloud habits/completions: ${e.message}")
+            Log.e(TAG, "Failed to restore cloud habits/completions/chats: ${e.message}")
         }
     }
 
@@ -399,6 +469,18 @@ object FirebaseSyncHelper {
             Log.e(TAG, "Error logging out from FirebaseAuth: ${e.message}")
         }
 
+        // Dynamically sign out from Google client to clear device authentication cache
+        try {
+            val gso = com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(
+                com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN
+            ).build()
+            val googleClient = com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(context, gso)
+            googleClient.signOut()
+            Log.i(TAG, "Successfully invoked GoogleSignInClient.signOut()")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error signing out GoogleSignInClient: ${e.message}")
+        }
+
         _userId.value = null
         _userEmail.value = null
         _userName.value = null
@@ -406,5 +488,16 @@ object FirebaseSyncHelper {
 
         val prefs = context.getSharedPreferences("nova_routine_auth", Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
+
+        // Clear Room database to prevent data pollution in other sessions
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val db = com.example.data.local.AppDatabase.getDatabase(context)
+                db.clearAllTables()
+                Log.d(TAG, "Successfully cleared all local Room database tables upon sign out.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing local database: ${e.message}")
+            }
+        }
     }
 }
